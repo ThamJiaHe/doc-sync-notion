@@ -153,4 +153,17 @@ All colors MUST be HSL.
     0%, 100% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
   }
+
+  .animate-spin-slow {
+    animation: spin-slow 20s linear infinite;
+  }
+
+  @keyframes spin-slow {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }
