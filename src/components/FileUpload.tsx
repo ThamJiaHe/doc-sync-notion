@@ -61,7 +61,7 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
           .getPublicUrl(filePath);
 
         // Create document record
-        const { error: dbError } = await supabase
+        const { data: documentData, error: dbError } = await supabase
           .from('documents')
           .insert({
             user_id: user.id,
@@ -70,9 +70,18 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
             file_type: file.type,
             file_size: file.size,
             status: 'pending'
-          });
+          })
+          .select()
+          .single();
 
         if (dbError) throw dbError;
+
+        // Trigger processing immediately
+        if (documentData) {
+          supabase.functions.invoke('process-document', {
+            body: { documentId: documentData.id }
+          }).catch(err => console.error('Failed to trigger processing:', err));
+        }
       }
 
       toast.success(`Successfully uploaded ${files.length} file(s)`);
