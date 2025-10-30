@@ -12,6 +12,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let documentId: string | null = null;
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -23,7 +24,8 @@ serve(async (req) => {
       }
     );
 
-    const { documentId } = await req.json();
+    const body = await req.json();
+    documentId = body?.documentId ?? null;
     console.log('Processing document:', documentId);
 
     if (!documentId) {
@@ -51,10 +53,30 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY is not configured');
     }
 
-    // Download the file
-    const fileResponse = await fetch(document.file_url);
-    const fileBlob = await fileResponse.blob();
-    const base64Data = await blobToBase64(fileBlob);
+    // Download the file securely from storage (bucket is private)
+    let base64Data = '';
+    try {
+      // Try to derive the storage object path from the file_url
+      const objectPath = extractObjectPathFromUrl(document.file_url);
+      if (!objectPath) throw new Error('Could not determine storage object path from file_url');
+      const { data: downloadData, error: downloadError } = await supabaseClient
+        .storage
+        .from('documents')
+        .download(objectPath);
+      if (downloadError || !downloadData) {
+        throw downloadError ?? new Error('File download failed');
+      }
+      base64Data = await blobToBase64(downloadData as unknown as Blob);
+    } catch (storageErr) {
+      console.warn('Storage download failed; falling back to direct fetch of file_url', storageErr);
+      const resp = await fetch(document.file_url);
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(`Failed to fetch file_url (${resp.status}): ${txt.slice(0,200)}`);
+      }
+      const blob = await resp.blob();
+      base64Data = await blobToBase64(blob);
+    }
 
     // Use Lovable AI to process the image/document
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -159,27 +181,27 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Error in process-document function:', error);
     
-    // Try to update document status to error
+    // Try to update document status to error (avoid re-consuming body)
     try {
-      const { documentId } = await req.json();
-      if (documentId) {
-        const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-          {
-            global: {
-              headers: { Authorization: req.headers.get('Authorization')! },
-            },
-          }
-        );
-        
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: { Authorization: req.headers.get('Authorization')! },
+          },
+        }
+      );
+
+      const errorDocId = documentId ?? undefined;
+      if (errorDocId) {
         await supabaseClient
           .from('documents')
           .update({ 
             status: 'error',
-            error_message: error.message 
+            error_message: error.message?.slice(0, 500)
           })
-          .eq('id', documentId);
+          .eq('id', errorDocId);
       }
     } catch (updateError) {
       console.error('Failed to update error status:', updateError);
@@ -204,6 +226,18 @@ async function blobToBase64(blob: Blob): Promise<string> {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+// Helper to parse object path from a storage URL
+function extractObjectPathFromUrl(urlStr: string): string | null {
+  try {
+    const marker = '/documents/';
+    const idx = urlStr.indexOf(marker);
+    if (idx === -1) return null;
+    return decodeURIComponent(urlStr.slice(idx + marker.length));
+  } catch {
+    return null;
+  }
 }
 
 // Helper function to convert text to basic CSV
