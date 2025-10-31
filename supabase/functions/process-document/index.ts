@@ -56,6 +56,7 @@ serve(async (req) => {
 
     // Download the file securely from storage (bucket is private)
     let base64Data = '';
+    let fileBlob: Blob | null = null;
     try {
       // Try to derive the storage object path from the file_url
       const objectPath = extractObjectPathFromUrl(document.file_url);
@@ -67,7 +68,8 @@ serve(async (req) => {
       if (downloadError || !downloadData) {
         throw downloadError ?? new Error('File download failed');
       }
-      base64Data = await blobToBase64(downloadData as unknown as Blob);
+      fileBlob = downloadData as unknown as Blob;
+      base64Data = await blobToBase64(fileBlob);
     } catch (storageErr) {
       console.warn('Storage download failed; falling back to direct fetch of file_url', storageErr);
       const resp = await fetch(document.file_url);
@@ -75,11 +77,62 @@ serve(async (req) => {
         const txt = await resp.text();
         throw new Error(`Failed to fetch file_url (${resp.status}): ${txt.slice(0,200)}`);
       }
-      const blob = await resp.blob();
-      base64Data = await blobToBase64(blob);
+      fileBlob = await resp.blob();
+      base64Data = await blobToBase64(fileBlob);
+    }
+
+    // Prepare content depending on file type
+    let inlineTextFromFile: string | null = null;
+    try {
+      const fileType = document.file_type || '';
+      if (fileBlob && fileType.startsWith('application/pdf')) {
+        const ab = await fileBlob.arrayBuffer();
+        inlineTextFromFile = await extractPdfText(new Uint8Array(ab));
+      } else if (fileBlob && (fileType.includes('wordprocessingml.document') || document.filename?.toLowerCase().endsWith('.docx'))) {
+        const ab = await fileBlob.arrayBuffer();
+        inlineTextFromFile = await extractDocxText(ab);
+      }
+    } catch (extractionErr) {
+      console.warn('Failed to extract text directly from file; will rely on AI where possible.', extractionErr);
+    }
+
+    // If not image and we couldn't extract text (e.g., legacy .doc), return a clear error
+    if (!inlineTextFromFile && !(document.file_type?.startsWith('image/'))) {
+      await supabaseClient
+        .from('documents')
+        .update({ 
+          status: 'error',
+          error_message: `Unsupported file type for automated processing: ${document.file_type}. Supported: images, PDFs, DOCX.`
+        })
+        .eq('id', documentId);
+      return new Response(
+        JSON.stringify({ error: 'Unsupported file type. Supported: images, PDFs, DOCX.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Use Lovable AI to process the image/document
+    const userContent: any[] = [
+      {
+        type: 'text',
+        text: 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format. Be thorough and capture ALL text, tables, and structured information. If a source_id is present in context, include it in the JSON root.'
+      }
+    ];
+
+    if (inlineTextFromFile) {
+      userContent.push({
+        type: 'text',
+        text: `Document text (extracted):\n${inlineTextFromFile}`
+      });
+    } else {
+      userContent.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${document.file_type};base64,${base64Data}`
+        }
+      });
+    }
+
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -95,18 +148,7 @@ serve(async (req) => {
           },
           {
             role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format. Be thorough and capture ALL text, tables, and structured information.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${document.file_type};base64,${base64Data}`
-                }
-              }
-            ]
+            content: userContent
           }
         ],
       }),
@@ -245,11 +287,30 @@ function extractObjectPathFromUrl(urlStr: string): string | null {
   }
 }
 
+// PDF text extraction using pdfjs-dist via esm.sh
+async function extractPdfText(bytes: Uint8Array): Promise<string> {
+  const pdfjsLib: any = await import('https://esm.sh/pdfjs-dist@3.11.174/build/pdf.js');
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  let all = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map((it: any) => (it && 'str' in it ? it.str : '')).join(' ');
+    all += text + '\n';
+  }
+  return all.trim();
+}
+
+// DOCX text extraction using Mammoth (browser build)
+async function extractDocxText(arrayBuffer: ArrayBuffer): Promise<string> {
+  const mammoth: any = await import('https://esm.sh/mammoth@1.6.0/mammoth.browser.js');
+  const result = await mammoth.extractRawText({ arrayBuffer });
+  return (result?.value || '').trim();
+}
+
 // Helper function to convert text to basic CSV
 function convertToCSV(text: string): string {
   const lines = text.split('\n').filter(line => line.trim());
   if (lines.length === 0) return '';
-  
-  // Simple CSV conversion - in production, you'd want more sophisticated parsing
   return 'Content\n' + lines.map(line => `"${line.replace(/"/g, '""')}"`).join('\n');
 }
