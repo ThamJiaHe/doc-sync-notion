@@ -26,7 +26,8 @@ serve(async (req) => {
 
     const body = await req.json();
     documentId = body?.documentId ?? null;
-    console.log('Processing document:', documentId);
+    const sourceId = body?.sourceId ?? null;
+    console.log('Processing document:', documentId, 'sourceId:', sourceId);
 
     if (!documentId) {
       throw new Error('Document ID is required');
@@ -46,6 +47,21 @@ serve(async (req) => {
       .from('documents')
       .update({ status: 'processing' })
       .eq('id', documentId);
+
+    // Validate supported file type (images only for now)
+    if (!document.file_type?.startsWith('image/')) {
+      await supabaseClient
+        .from('documents')
+        .update({ 
+          status: 'error', 
+          error_message: `Unsupported file type for OCR: ${document.file_type}. Only images are supported currently.` 
+        })
+        .eq('id', documentId);
+      return new Response(
+        JSON.stringify({ error: 'Unsupported file type for OCR. Only images are supported currently.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Call Lovable AI for OCR processing
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -157,11 +173,15 @@ serve(async (req) => {
     }
 
     // Store extracted data
+    const contentPayload = (jsonData && typeof jsonData === 'object' && !Array.isArray(jsonData))
+      ? { source_id: sourceId, ...jsonData }
+      : { source_id: sourceId, content: jsonData };
+
     const { error: dataError } = await supabaseClient
       .from('extracted_data')
       .insert({
         document_id: documentId,
-        content: jsonData,
+        content: contentPayload,
         markdown_content: markdownContent,
         csv_data: csvData,
       });

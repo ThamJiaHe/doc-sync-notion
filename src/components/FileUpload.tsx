@@ -3,6 +3,7 @@ import { Upload, File, X } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -13,6 +14,7 @@ interface FileUploadProps {
 export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [sourceId, setSourceId] = useState("");
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles((prev) => [...prev, ...acceptedFiles]);
@@ -76,11 +78,16 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
 
         if (dbError) throw dbError;
 
-        // Trigger processing immediately
+        // Trigger processing immediately (images only)
         if (documentData) {
-          supabase.functions.invoke('process-document', {
-            body: { documentId: documentData.id }
-          }).catch(err => console.error('Failed to trigger processing:', err));
+          if (file.type.startsWith('image/')) {
+            supabase.functions.invoke('process-document', {
+              body: { documentId: documentData.id, sourceId }
+            }).catch(err => console.error('Failed to trigger processing:', err));
+          } else {
+            console.warn('Skipping processing for non-image file:', file.type);
+            toast.info(`Uploaded ${file.name}. Processing supports images only for now.`);
+          }
         }
       }
 
@@ -97,6 +104,11 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
 
   return (
     <Card className="p-6">
+      <div className="mb-6">
+        <label className="text-sm font-medium block mb-2">Source ID (optional)</label>
+        <Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder="e.g., Notion Database Source ID" />
+        <p className="text-xs text-muted-foreground mt-1">Included with extracted data to help map CSV to your Notion database.</p>
+      </div>
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-smooth hover:border-primary ${
