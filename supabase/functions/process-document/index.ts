@@ -287,13 +287,13 @@ function extractObjectPathFromUrl(urlStr: string): string | null {
   }
 }
 
-// PDF text extraction using pdfjs-dist via esm.sh
+// PDF text extraction using pdfjs-serverless (pure JS, serverless-friendly)
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
-  const pdfjsLib: any = await import('https://esm.sh/pdfjs-dist@3.11.174/build/pdf.js');
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const { getDocument }: any = await import('https://esm.sh/pdfjs-serverless@0.3.2');
+  const doc = await getDocument({ data: bytes, useSystemFonts: true }).promise;
   let all = '';
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
     const content = await page.getTextContent();
     const text = content.items.map((it: any) => (it && 'str' in it ? it.str : '')).join(' ');
     all += text + '\n';
