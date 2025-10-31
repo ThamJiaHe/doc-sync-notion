@@ -78,16 +78,11 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
 
         if (dbError) throw dbError;
 
-        // Trigger processing immediately (images only)
+        // Trigger processing immediately
         if (documentData) {
-          if (file.type.startsWith('image/')) {
-            supabase.functions.invoke('process-document', {
-              body: { documentId: documentData.id, sourceId }
-            }).catch(err => console.error('Failed to trigger processing:', err));
-          } else {
-            console.warn('Skipping processing for non-image file:', file.type);
-            toast.info(`Uploaded ${file.name}. Processing supports images only for now.`);
-          }
+          supabase.functions.invoke('process-document', {
+            body: { documentId: documentData.id, sourceId }
+          }).catch(err => console.error('Failed to trigger processing:', err));
         }
       }
 

@@ -48,21 +48,6 @@ serve(async (req) => {
       .update({ status: 'processing' })
       .eq('id', documentId);
 
-    // Validate supported file type (images only for now)
-    if (!document.file_type?.startsWith('image/')) {
-      await supabaseClient
-        .from('documents')
-        .update({ 
-          status: 'error', 
-          error_message: `Unsupported file type for OCR: ${document.file_type}. Only images are supported currently.` 
-        })
-        .eq('id', documentId);
-      return new Response(
-        JSON.stringify({ error: 'Unsupported file type for OCR. Only images are supported currently.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Call Lovable AI for OCR processing
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -106,7 +91,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert OCR system. Extract ALL text and data from documents and images. Return structured data in JSON format with fields detected in the document. Also provide a markdown version and CSV format.'
+            content: 'You are an expert document processing system. Extract ALL text and data from documents, PDFs, and images. Return structured data in JSON format with fields detected. Also provide markdown version and CSV format that can be imported to Notion databases.'
           },
           {
             role: 'user',
