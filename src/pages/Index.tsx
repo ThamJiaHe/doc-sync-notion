@@ -21,8 +21,26 @@ import {
   Eye,
   RefreshCw,
   Download,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Document {
   id: string;
@@ -40,6 +58,9 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<any>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -120,6 +141,51 @@ const Index = () => {
     setSelectedDocs(newSelected);
   };
 
+  const toggleSelectAll = () => {
+    if (selectedDocs.size === documents.length && documents.length > 0) {
+      setSelectedDocs(new Set());
+    } else {
+      setSelectedDocs(new Set(documents.map((d) => d.id)));
+    }
+  };
+
+  const deleteSelectedDocs = async () => {
+    try {
+      const idsToDelete = Array.from(selectedDocs);
+      const { error } = await supabase
+        .from("documents")
+        .delete()
+        .in("id", idsToDelete);
+
+      if (error) throw error;
+
+      toast.success(`Deleted ${idsToDelete.length} document(s)`);
+      setSelectedDocs(new Set());
+      fetchDocuments();
+    } catch (error: any) {
+      toast.error("Failed to delete documents: " + error.message);
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
+  const viewPreview = async (documentId: string, filename: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("extracted_data")
+        .select("content, markdown_content, csv_data")
+        .eq("document_id", documentId)
+        .single();
+
+      if (error) throw error;
+
+      setPreviewDoc({ ...data, filename });
+      setPreviewOpen(true);
+    } catch (error: any) {
+      toast.error("Failed to load preview: " + error.message);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<
       string,
@@ -162,15 +228,27 @@ const Index = () => {
 
           {/* Content */}
           <div className="p-6 space-y-6">
-            {/* Search */}
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search documents..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+            {/* Search & Actions */}
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search documents..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {selectedDocs.size > 0 && (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete ({selectedDocs.size})
+                </Button>
+              )}
             </div>
 
             {/* Upload Zone */}
@@ -182,7 +260,10 @@ const Index = () => {
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12">
-                      <Checkbox />
+                      <Checkbox
+                        checked={selectedDocs.size === documents.length && documents.length > 0}
+                        onCheckedChange={toggleSelectAll}
+                      />
                     </TableHead>
                     <TableHead>Document Name</TableHead>
                     <TableHead>Type</TableHead>
@@ -225,10 +306,16 @@ const Index = () => {
                                   size="icon"
                                   variant="ghost"
                                   onClick={() => downloadCSV(doc.id, doc.filename)}
+                                  title="Download CSV"
                                 >
                                   <Download className="h-4 w-4" />
                                 </Button>
-                                <Button size="icon" variant="ghost">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => viewPreview(doc.id, doc.filename)}
+                                  title="Preview"
+                                >
                                   <Eye className="h-4 w-4" />
                                 </Button>
                               </>
@@ -250,6 +337,62 @@ const Index = () => {
           </div>
         </main>
       </div>
+
+      {/* Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Preview: {previewDoc?.filename}</DialogTitle>
+            <DialogDescription>
+              Extracted content from the document
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {previewDoc?.markdown_content && (
+              <div>
+                <h3 className="font-semibold mb-2">Markdown Content</h3>
+                <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">
+                  {previewDoc.markdown_content}
+                </pre>
+              </div>
+            )}
+            {previewDoc?.csv_data && (
+              <div>
+                <h3 className="font-semibold mb-2">CSV Data</h3>
+                <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                  {previewDoc.csv_data}
+                </pre>
+              </div>
+            )}
+            {previewDoc?.content && (
+              <div>
+                <h3 className="font-semibold mb-2">JSON Content</h3>
+                <pre className="bg-muted p-4 rounded-lg text-sm overflow-x-auto">
+                  {JSON.stringify(previewDoc.content, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Documents?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedDocs.size} document(s)? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteSelectedDocs} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   );
 };

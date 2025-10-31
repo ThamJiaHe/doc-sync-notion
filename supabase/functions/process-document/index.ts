@@ -26,8 +26,7 @@ serve(async (req) => {
 
     const body = await req.json();
     documentId = body?.documentId ?? null;
-    const sourceId = body?.sourceId ?? null;
-    console.log('Processing document:', documentId, 'sourceId:', sourceId);
+    console.log('Processing document:', documentId);
 
     if (!documentId) {
       throw new Error('Document ID is required');
@@ -41,6 +40,10 @@ serve(async (req) => {
       .single();
 
     if (docError) throw docError;
+    
+    // Get source_id from document record
+    const sourceId = (document as any).source_id ?? null;
+    console.log('Document source_id:', sourceId);
 
     // Update status to processing
     await supabaseClient
@@ -111,11 +114,18 @@ serve(async (req) => {
       );
     }
 
+    // Prepare system prompt with Notion context if source_id exists
+    const notionContext = sourceId 
+      ? `\n\nIMPORTANT: This data will be imported into a Notion database with Source ID: ${sourceId}. Format the CSV to match common Notion database properties (Name, Tags, Status, Date, Notes, Description, etc.) based on the content. Use proper column headers that Notion can understand.`
+      : '';
+
+    const systemPrompt = `You are an expert document processing system. Extract ALL text and data from documents, PDFs, and images. Return structured data in JSON format with fields detected. Also provide markdown version and CSV format that can be imported to Notion databases.${notionContext}`;
+
     // Use Lovable AI to process the image/document
     const userContent: any[] = [
       {
         type: 'text',
-        text: 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format. Be thorough and capture ALL text, tables, and structured information. If a source_id is present in context, include it in the JSON root.'
+        text: 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format. Be thorough and capture ALL text, tables, and structured information.'
       }
     ];
 
@@ -144,7 +154,7 @@ serve(async (req) => {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert document processing system. Extract ALL text and data from documents, PDFs, and images. Return structured data in JSON format with fields detected. Also provide markdown version and CSV format that can be imported to Notion databases.'
+            content: systemPrompt
           },
           {
             role: 'user',

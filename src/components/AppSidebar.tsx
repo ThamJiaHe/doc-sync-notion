@@ -72,16 +72,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 }
               >
                 <LayoutDashboard className="h-4 w-4" />
-                {!collapsed && <span>Dashboard</span>}
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <NavLink to="/documents" className="hover:bg-muted">
-                <FileText className="h-4 w-4" />
-                {!collapsed && <span>All Documents</span>}
+                {!collapsed && <span>Documents</span>}
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
