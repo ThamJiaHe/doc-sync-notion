@@ -116,16 +116,45 @@ serve(async (req) => {
 
     // Prepare system prompt with Notion context if source_id exists
     const notionContext = sourceId 
-      ? `\n\nIMPORTANT: This data will be imported into a Notion database with Source ID: ${sourceId}. Format the CSV to match common Notion database properties (Name, Tags, Status, Date, Notes, Description, etc.) based on the content. Use proper column headers that Notion can understand.`
-      : '';
+      ? `\n\nCRITICAL INSTRUCTION - NOTION DATABASE FORMATTING:
+This data will be imported into Notion database with Source ID: ${sourceId}
 
-    const systemPrompt = `You are an expert document processing system. Extract ALL text and data from documents, PDFs, and images. Return structured data in JSON format with fields detected. Also provide markdown version and CSV format that can be imported to Notion databases.${notionContext}`;
+You MUST format the CSV with these exact Notion-compatible column headers based on the document content:
+- For tasks/todos: Name, Status, Priority, Due Date, Tags, Notes
+- For contacts/people: Name, Email, Phone, Company, Role, Tags, Notes  
+- For products/inventory: Name, SKU, Price, Quantity, Category, Description
+- For articles/content: Title, Author, Date, Category, Tags, Content, URL
+- For general data: Extract meaningful column names from the document structure
+
+REQUIREMENTS:
+1. First row MUST be column headers (capitalize first letter)
+2. Use comma-separated values with proper escaping
+3. Wrap values containing commas in double quotes
+4. Date format: YYYY-MM-DD for Notion compatibility
+5. Keep it simple - Notion prefers clean, structured data
+6. If the document has tables, preserve the table structure exactly
+7. If no clear structure, create: Name, Description, Category, Tags, Notes`
+      : '\n\nFormat the CSV with clear, descriptive column headers. First row must be headers, then data rows.';
+
+    const systemPrompt = `You are an expert document processing system specialized in extracting structured data for Notion databases.
+
+YOUR TASK:
+1. Extract ALL text and data from the provided document (PDF, DOCX, or image)
+2. Identify the document type and structure
+3. Return THREE formats:
+   - JSON: Structured data with detected fields
+   - Markdown: Clean formatted version of the content
+   - CSV: PERFECTLY formatted for Notion database import${notionContext}
+
+Be thorough and capture ALL information. The CSV format is CRITICAL for the user's workflow.`;
 
     // Use Lovable AI to process the image/document
     const userContent: any[] = [
       {
         type: 'text',
-        text: 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format. Be thorough and capture ALL text, tables, and structured information.'
+        text: sourceId 
+          ? `Extract and structure ALL data from this document for Notion database (ID: ${sourceId}). Provide JSON, Markdown, and most importantly, a PERFECTLY formatted CSV for direct Notion import.`
+          : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.'
       }
     ];
 

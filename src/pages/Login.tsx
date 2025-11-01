@@ -99,12 +99,12 @@ const Login = () => {
           {/* Heading */}
           <div className="text-center mb-8">
             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
-              {isSignUp ? "Create your account!" : "Login to your account!"}
+              {isSignUp ? "Create your account" : "Welcome back"}
             </h1>
             <p className="text-sm text-gray-500">
               {isSignUp 
-                ? "Enter your details to create a new account"
-                : "Enter your registered email address and password to login!"}
+                ? "Start extracting data from documents to CSV"
+                : "Sign in to manage your documents"}
             </p>
           </div>
 
@@ -223,7 +223,7 @@ const Login = () => {
         <div className="max-w-2xl text-center space-y-8">
           {/* Heading */}
           <h2 className="text-5xl font-bold text-gray-900">
-            Write Better <span className="text-[#2563EB]">Everywhere</span>
+            Process Documents <span className="text-[#2563EB]">Instantly</span>
           </h2>
 
           {/* Animated Circular Diagram */}
@@ -300,7 +300,7 @@ const Login = () => {
 
           {/* Bottom Text */}
           <p className="text-sm text-gray-600 max-w-lg mx-auto">
-            Compatible with <span className="font-semibold italic">Gmail, Outlook Web, LinkedIn and most web editors</span> for a smooth writing experience anywhere online.
+            Supports <span className="font-semibold italic">PDFs, Word documents, and images</span>. Extract data to CSV format compatible with Notion databases and spreadsheets.
           </p>
 
           {/* Pagination Dots */}

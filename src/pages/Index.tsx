@@ -22,6 +22,8 @@ import {
   RefreshCw,
   Download,
   Trash2,
+  Edit,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -41,6 +43,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { EditDocumentDialog } from "@/components/EditDocumentDialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Document {
   id: string;
@@ -50,6 +59,7 @@ interface Document {
   status: string;
   error_message: string | null;
   created_at: string;
+  source_id: string | null;
 }
 
 const Index = () => {
@@ -61,6 +71,8 @@ const Index = () => {
   const [previewDoc, setPreviewDoc] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [editDoc, setEditDoc] = useState<Document | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -186,6 +198,48 @@ const Index = () => {
     }
   };
 
+  const openEditDialog = (doc: Document) => {
+    setEditDoc(doc);
+    setEditDialogOpen(true);
+  };
+
+  const reprocessSelected = async () => {
+    try {
+      const idsToProcess = Array.from(selectedDocs);
+      let processed = 0;
+      
+      for (const id of idsToProcess) {
+        const { error } = await supabase.functions.invoke("process-document", {
+          body: { documentId: id },
+        });
+        if (!error) processed++;
+      }
+
+      toast.success(`Started reprocessing ${processed} document(s)`);
+      setSelectedDocs(new Set());
+      fetchDocuments();
+    } catch (error: any) {
+      toast.error("Failed to reprocess documents: " + error.message);
+    }
+  };
+
+  const downloadAllCSV = async () => {
+    try {
+      const idsToDownload = Array.from(selectedDocs);
+      
+      for (const id of idsToDownload) {
+        const doc = documents.find((d) => d.id === id);
+        if (doc?.status === "completed") {
+          await downloadCSV(id, doc.filename);
+        }
+      }
+      
+      toast.success(`Downloaded CSV for selected documents`);
+    } catch (error: any) {
+      toast.error("Failed to download CSV files: " + error.message);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<
       string,
@@ -240,14 +294,32 @@ const Index = () => {
                 />
               </div>
               {selectedDocs.size > 0 && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteDialogOpen(true)}
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete ({selectedDocs.size})
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={reprocessSelected}
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Reprocess ({selectedDocs.size})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadAllCSV}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download CSV ({selectedDocs.size})
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete ({selectedDocs.size})
+                  </Button>
+                </div>
               )}
             </div>
 
@@ -267,6 +339,7 @@ const Index = () => {
                     </TableHead>
                     <TableHead>Document Name</TableHead>
                     <TableHead>Type</TableHead>
+                    <TableHead>Source ID</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -287,19 +360,35 @@ const Index = () => {
                         </TableCell>
                         <TableCell className="font-medium">{doc.filename}</TableCell>
                         <TableCell>{doc.file_type}</TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {doc.source_id || "—"}
+                          </span>
+                        </TableCell>
                         <TableCell>{new Date(doc.created_at).toLocaleDateString()}</TableCell>
                         <TableCell>{getStatusBadge(doc.status)}</TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => openEditDialog(doc)}
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            
                             {doc.status === "pending" && (
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 onClick={() => processDocument(doc.id)}
+                                title="Process"
                               >
                                 <RefreshCw className="h-4 w-4" />
                               </Button>
                             )}
+                            
                             {doc.status === "completed" && (
                               <>
                                 <Button
@@ -318,7 +407,26 @@ const Index = () => {
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => processDocument(doc.id)}
+                                  title="Reprocess"
+                                >
+                                  <RefreshCw className="h-4 w-4" />
+                                </Button>
                               </>
+                            )}
+                            
+                            {doc.status === "error" && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => processDocument(doc.id)}
+                                title="Retry"
+                              >
+                                <RefreshCw className="h-4 w-4" />
+                              </Button>
                             )}
                           </div>
                         </TableCell>
@@ -393,6 +501,14 @@ const Index = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Document Dialog */}
+      <EditDocumentDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        document={editDoc}
+        onUpdate={fetchDocuments}
+      />
     </SidebarProvider>
   );
 };

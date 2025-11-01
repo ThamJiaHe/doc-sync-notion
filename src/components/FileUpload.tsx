@@ -71,7 +71,8 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
             file_url: publicUrl,
             file_type: file.type,
             file_size: file.size,
-            status: 'pending'
+            status: 'pending',
+            source_id: sourceId || null
           })
           .select()
           .single();
@@ -81,7 +82,7 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
         // Trigger processing immediately
         if (documentData) {
           supabase.functions.invoke('process-document', {
-            body: { documentId: documentData.id, sourceId }
+            body: { documentId: documentData.id }
           }).catch(err => console.error('Failed to trigger processing:', err));
         }
       }
