@@ -17,7 +17,7 @@ You need to deploy the edge functions to Supabase for document processing to wor
 3. Click **Deploy new function**
 4. Upload the function files from `supabase/functions/process-document/`
 5. Set required environment variables:
-   - `LOVABLE_API_KEY` - Your Lovable AI Gateway key (for OCR processing)
+   - `GEMINI_API_KEY` - Your Google Gemini API key (FREE from https://aistudio.google.com/apikey)
    - `ENCRYPTION_SECRET` - Random 32-byte string (for API key encryption)
    
 #### Option 2: Deploy via Supabase CLI (Recommended)
@@ -40,7 +40,7 @@ supabase functions deploy process-document
 supabase functions deploy update-user-settings
 
 # Set required secrets
-supabase secrets set LOVABLE_API_KEY=your_lovable_api_key
+supabase secrets set GEMINI_API_KEY=your_gemini_api_key
 supabase secrets set ENCRYPTION_SECRET=$(openssl rand -base64 32)
 ```
 
@@ -67,7 +67,7 @@ After deploying edge functions:
 ### Environment Variables Required
 
 **process-document function:**
-- `LOVABLE_API_KEY` - Required for AI OCR processing
+- `GEMINI_API_KEY` - Required for AI OCR processing (FREE from Google AI Studio)
 - `ENCRYPTION_SECRET` - Required for decrypting user's Notion API keys
 - `NOTION_API_KEY` - Optional system-wide fallback
 

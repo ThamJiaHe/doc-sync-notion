@@ -333,15 +333,17 @@ serve(async (req) => {
       .update({ status: 'processing' })
       .eq('id', documentId);
 
-    // Call Lovable AI for OCR processing
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    // Call Google Gemini AI directly for OCR processing
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is not configured. Get one from https://aistudio.google.com/apikey');
     }
 
     // Download the file securely from storage (bucket is private)
     let base64Data = '';
     let fileBlob: Blob | null = null;
+    let mimeType = document.file_type || 'application/octet-stream';
+    
     try {
       // Try to derive the storage object path from the file_url
       const objectPath = extractObjectPathFromUrl(document.file_url);
@@ -436,61 +438,67 @@ FORMAT REQUIREMENTS:
 - Extract all structured data (tables, lists, key-value pairs)
 - Maintain data relationships and hierarchy where possible`;
 
-    // Use Lovable AI to process the image/document
-    const userContent: any[] = [
-      {
-        type: 'text',
-        text: notionHeaders && notionHeaders.length
-          ? `Extract and structure ALL data from this document for the given Notion database. Align JSON keys and CSV columns to these headers: ${notionHeaders.join(', ')}.`
-          : sourceId
-            ? `Extract and structure ALL data from this document for import into Notion database ${sourceId}. Identify all fields, create appropriate column headers, and organize the data in a structured CSV format.`
-            : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.'
-      }
+    // Build the prompt for Google Gemini
+    const userPrompt = notionHeaders && notionHeaders.length
+      ? `Extract and structure ALL data from this document for the given Notion database. Align JSON keys and CSV columns to these headers: ${notionHeaders.join(', ')}.`
+      : sourceId
+        ? `Extract and structure ALL data from this document for import into Notion database ${sourceId}. Identify all fields, create appropriate column headers, and organize the data in a structured CSV format.`
+        : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.';
+
+    // Prepare the request body for Google Gemini API
+    const geminiParts: any[] = [
+      { text: systemPrompt },
+      { text: userPrompt }
     ];
 
     if (inlineTextFromFile) {
-      userContent.push({
-        type: 'text',
+      // For extracted text, just add it as text
+      geminiParts.push({
         text: `Document text (extracted):\n${inlineTextFromFile}`
       });
     } else {
-      userContent.push({
-        type: 'image_url',
-        image_url: {
-          url: `data:${document.file_type};base64,${base64Data}`
+      // For images/PDFs, send as inline data
+      geminiParts.push({
+        inlineData: {
+          mimeType: mimeType,
+          data: base64Data
         }
       });
     }
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Google Gemini API directly (no Lovable middleman)
+    const aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=' + GEMINI_API_KEY, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: userContent
-          }
-        ],
+        contents: [{
+          parts: geminiParts
+        }],
+        generationConfig: {
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 8192,
+        }
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errorText);
-      throw new Error(`AI processing failed: ${errorText}`);
+      console.error('Gemini API error:', aiResponse.status, errorText);
+      throw new Error(`AI processing failed (${aiResponse.status}): ${errorText}`);
     }
 
     const aiData = await aiResponse.json();
-    const extractedText = aiData.choices[0].message.content;
+    
+    // Extract text from Gemini response format
+    if (!aiData.candidates || !aiData.candidates[0] || !aiData.candidates[0].content) {
+      throw new Error('Invalid response from Gemini API');
+    }
+    
+    const extractedText = aiData.candidates[0].content.parts[0].text;
 
     // Parse the response to extract JSON, markdown, and CSV
     let jsonData: any = {};
