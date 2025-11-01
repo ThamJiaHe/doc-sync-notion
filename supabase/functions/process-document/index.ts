@@ -45,6 +45,10 @@ serve(async (req) => {
     const sourceId = (document as any).source_id ?? null;
     console.log('Document source_id:', sourceId);
 
+    // Optionally fetch Notion database schema when a sourceId is provided
+    const notionSchema = sourceId ? await fetchNotionDatabaseSchema(sourceId) : null;
+    const notionHeaders: string[] | null = notionSchema ? Object.keys(notionSchema.properties) : null;
+
     // Update status to processing
     await supabaseClient
       .from('documents')
@@ -115,26 +119,16 @@ serve(async (req) => {
     }
 
     // Prepare system prompt with Notion context if source_id exists
-    const notionContext = sourceId 
-      ? `\n\nCRITICAL INSTRUCTION - NOTION DATABASE FORMATTING:
-This data will be imported into Notion database with Source ID: ${sourceId}
-
-You MUST format the CSV with these exact Notion-compatible column headers based on the document content:
-- For tasks/todos: Name, Status, Priority, Due Date, Tags, Notes
-- For contacts/people: Name, Email, Phone, Company, Role, Tags, Notes  
-- For products/inventory: Name, SKU, Price, Quantity, Category, Description
-- For articles/content: Title, Author, Date, Category, Tags, Content, URL
-- For general data: Extract meaningful column names from the document structure
-
-REQUIREMENTS:
-1. First row MUST be column headers (capitalize first letter)
-2. Use comma-separated values with proper escaping
-3. Wrap values containing commas in double quotes
-4. Date format: YYYY-MM-DD for Notion compatibility
-5. Keep it simple - Notion prefers clean, structured data
-6. If the document has tables, preserve the table structure exactly
-7. If no clear structure, create: Name, Description, Category, Tags, Notes`
-      : '\n\nFormat the CSV with clear, descriptive column headers. First row must be headers, then data rows.';
+    const headersInstruction = notionHeaders && notionHeaders.length
+      ? `\n\nCRITICAL INSTRUCTION - NOTION DATABASE (ID: ${sourceId}):\n` +
+        `Use EXACTLY these column headers in this EXACT order:\n${notionHeaders.join(', ')}\n` +
+        `Rules:\n` +
+        `- First row MUST be only the headers above\n` +
+        `- Do not add, rename, or reorder columns\n` +
+        `- Leave cells blank if data is unavailable\n` +
+        `- Date format: YYYY-MM-DD\n` +
+        `- Escape commas and quotes properly (RFC4180)`
+      : `\n\nFormat the CSV with clear, descriptive column headers. First row must be headers, then data rows.`;
 
     const systemPrompt = `You are an expert document processing system specialized in extracting structured data for Notion databases.
 
@@ -144,7 +138,7 @@ YOUR TASK:
 3. Return THREE formats:
    - JSON: Structured data with detected fields
    - Markdown: Clean formatted version of the content
-   - CSV: PERFECTLY formatted for Notion database import${notionContext}
+   - CSV: PERFECTLY formatted for Notion database import${headersInstruction}
 
 Be thorough and capture ALL information. The CSV format is CRITICAL for the user's workflow.`;
 
@@ -152,8 +146,8 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
     const userContent: any[] = [
       {
         type: 'text',
-        text: sourceId 
-          ? `Extract and structure ALL data from this document for Notion database (ID: ${sourceId}). Provide JSON, Markdown, and most importantly, a PERFECTLY formatted CSV for direct Notion import.`
+        text: notionHeaders && notionHeaders.length
+          ? `Extract and structure ALL data from this document for the given Notion database. Align JSON keys and CSV columns to these headers: ${notionHeaders.join(', ')}.`
           : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.'
       }
     ];
@@ -237,6 +231,22 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
       csvData = convertToCSV(extractedText);
       jsonData = { content: extractedText };
     }
+
+    // If we have Notion headers, strictly enforce them
+    if (notionHeaders && notionHeaders.length) {
+      if (!csvData || !csvData.trim()) {
+        csvData = rebuildCSVFromJson(jsonData, notionHeaders);
+      } else {
+        const firstLine = csvData.split('\n')[0] || '';
+        const got = parseCSVHeaders(firstLine);
+        const wanted = notionHeaders;
+        const matches = got.length === wanted.length && got.every((h, i) => normalizeKey(h) === normalizeKey(wanted[i]));
+        if (!matches) {
+          csvData = rebuildCSVFromJson(jsonData, notionHeaders);
+        }
+      }
+    }
+
 
     // Store extracted data
     const contentPayload = (jsonData && typeof jsonData === 'object' && !Array.isArray(jsonData))
@@ -352,4 +362,70 @@ function convertToCSV(text: string): string {
   const lines = text.split('\n').filter(line => line.trim());
   if (lines.length === 0) return '';
   return 'Content\n' + lines.map(line => `"${line.replace(/"/g, '""')}"`).join('\n');
+}
+
+// Optional: Fetch Notion database schema when a Source ID is provided
+async function fetchNotionDatabaseSchema(databaseId: string): Promise<any | null> {
+  try {
+    const token = Deno.env.get('NOTION_API_KEY');
+    if (!token) return null;
+    const resp = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      console.warn('Failed to fetch Notion schema:', resp.status, t);
+      return null;
+    }
+    return await resp.json();
+  } catch (e) {
+    console.warn('Error fetching Notion schema:', e);
+    return null;
+  }
+}
+
+function parseCSVHeaders(line: string): string[] {
+  // Split on commas not inside quotes
+  const regex = /,(?=(?:[^"]*\"[^"]*\")*[^"]*$)/;
+  return line.split(regex).map(h => h.trim().replace(/^\"|\"$/g, ''));
+}
+
+function normalizeKey(k: string): string {
+  return k.replace(/[_\s-]+/g, '').toLowerCase();
+}
+
+function rebuildCSVFromJson(jsonData: any, headers: string[]): string {
+  const rows: any[] = Array.isArray(jsonData)
+    ? jsonData
+    : Array.isArray(jsonData?.items)
+      ? jsonData.items
+      : [jsonData];
+
+  const headerNorm = headers.map(normalizeKey);
+  const csvRows: string[] = [];
+  csvRows.push(headers.join(','));
+
+  for (const row of rows) {
+    const out: string[] = [];
+    for (let i = 0; i < headers.length; i++) {
+      const target = headerNorm[i];
+      // Find best matching key in row
+      let val: any = '';
+      if (row && typeof row === 'object') {
+        const foundKey = Object.keys(row).find(k => normalizeKey(k) === target);
+        if (foundKey) val = row[foundKey];
+      }
+      if (val === undefined || val === null) val = '';
+      const str = String(val).replace(/"/g, '""');
+      // Quote if contains comma or quote
+      out.push(/[,\n\r"]/g.test(str) ? `"${str}"` : str);
+    }
+    csvRows.push(out.join(','));
+  }
+  return csvRows.join('\n');
 }

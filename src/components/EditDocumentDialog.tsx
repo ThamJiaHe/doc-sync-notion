@@ -44,13 +44,20 @@ export function EditDocumentDialog({
   const handleSave = async () => {
     if (!document) return;
 
+    // Validate Notion Source ID if provided (UUID with or without dashes)
+    const trimmed = sourceId.trim();
+    if (trimmed && !/^[a-f0-9-]{32,36}$/i.test(trimmed)) {
+      toast.error("Invalid Notion Source ID format. Paste the Database ID (UUID).");
+      return;
+    }
+
     setSaving(true);
     try {
       const { error } = await supabase
         .from("documents")
         .update({
           filename,
-          source_id: sourceId || null,
+          source_id: trimmed || null,
         })
         .eq("id", document.id);
 

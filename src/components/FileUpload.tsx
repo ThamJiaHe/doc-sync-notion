@@ -40,6 +40,13 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
       return;
     }
 
+    // Validate Notion Source ID if provided (UUID with or without dashes)
+    const trimmedSource = sourceId.trim();
+    if (trimmedSource && !/^[a-f0-9-]{32,36}$/i.test(trimmedSource)) {
+      toast.error("Invalid Notion Source ID format. Paste the Database ID (UUID).");
+      return;
+    }
+
     setUploading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
