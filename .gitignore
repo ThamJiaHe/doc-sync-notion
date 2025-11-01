@@ -14,15 +14,36 @@ dist-ssr
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
+# Supabase
+.supabase/
+
 # SQL setup files (contain sensitive project info)
 setup_database.sql
 create_bucket_simple.sql
 COMPLETE_SETUP.sql
+check-document-schema.sql
+check-user-settings.sql
+
+# Test scripts (may contain sensitive data)
+test-notion-api.sh
+test-edge-function.sh
+deploy-functions.sh
+fix-deployment.sh
+
+# Documentation with potential sensitive info
+DEPLOYMENT_INSTRUCTIONS.md
+ERROR_FIX.md
+FIX_SUMMARY.md
+GET_LOVABLE_API_KEY.md
+INDEPENDENCE_DAY.md
+QUICK_DEPLOY.md
 
 # Editor directories and files
 .vscode/*
@@ -34,5 +55,3 @@ COMPLETE_SETUP.sql
 *.njsproj
 *.sln
 *.sw?
-supabase/migrations/20251101160000_add_default_source_id.sql
-check-document-schema.sql

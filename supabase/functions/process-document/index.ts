@@ -801,8 +801,26 @@ function convertToCSV(text: string): string {
 // Optional: Fetch Notion database schema when a Source ID is provided
 async function fetchNotionDatabaseSchema(databaseId: string, token: string): Promise<any | null> {
   try {
-    if (!token) return null;
-    const resp = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+    console.log('=== FETCHING NOTION DATABASE SCHEMA ===');
+    console.log('Database ID (raw):', databaseId);
+    
+    // Remove hyphens from database ID - Notion API works with or without hyphens
+    // but we'll keep the format as-is since the API accepts both
+    const cleanDatabaseId = databaseId.replace(/-/g, '');
+    console.log('Database ID (cleaned):', cleanDatabaseId);
+    console.log('Token present:', !!token);
+    console.log('Token length:', token?.length || 0);
+    console.log('Token starts with:', token?.substring(0, 15) || 'N/A');
+    
+    if (!token) {
+      console.error('No token provided to fetchNotionDatabaseSchema');
+      return null;
+    }
+    
+    const url = `https://api.notion.com/v1/databases/${cleanDatabaseId}`;
+    console.log('Fetching from URL:', url);
+    
+    const resp = await fetch(url, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -810,14 +828,25 @@ async function fetchNotionDatabaseSchema(databaseId: string, token: string): Pro
         'Content-Type': 'application/json'
       }
     });
+    
+    console.log('Notion API response status:', resp.status);
+    console.log('Notion API response headers:', JSON.stringify(Object.fromEntries(resp.headers.entries())));
+    
     if (!resp.ok) {
-      const t = await resp.text();
-      console.warn('Failed to fetch Notion schema:', resp.status, t);
+      const errorText = await resp.text();
+      console.error('Failed to fetch Notion schema:', resp.status, errorText);
       return null;
     }
-    return await resp.json();
+    
+    const schema = await resp.json();
+    console.log('Successfully fetched Notion schema!');
+    console.log('Schema properties:', Object.keys(schema.properties || {}));
+    console.log('Column count:', Object.keys(schema.properties || {}).length);
+    
+    return schema;
   } catch (e) {
-    console.warn('Error fetching Notion schema:', e);
+    console.error('Error fetching Notion schema:', e);
+    console.error('Error details:', String(e));
     return null;
   }
 }
