@@ -95,15 +95,15 @@ export function EditDocumentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="source_id">Notion Source ID (optional)</Label>
+            <Label htmlFor="source_id">Notion Database ID (optional)</Label>
             <Input
               id="source_id"
               value={sourceId}
               onChange={(e) => setSourceId(e.target.value)}
-              placeholder="e.g., Notion Database ID"
+              placeholder="e.g., 1a2b3c4d5e6f7g8h9i0j"
             />
             <p className="text-xs text-muted-foreground">
-              Used to format CSV data for your specific Notion database
+              Add your Notion Database ID to format CSV exports to match your database schema.
             </p>
           </div>
         </div>

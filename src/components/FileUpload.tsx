@@ -108,9 +108,14 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
   return (
     <Card className="p-6">
       <div className="mb-6">
-        <label className="text-sm font-medium block mb-2">Source ID (optional)</label>
-        <Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder="e.g., Notion Database Source ID" />
-        <p className="text-xs text-muted-foreground mt-1">Included with extracted data to help map CSV to your Notion database.</p>
+        <label className="text-sm font-medium block mb-2">Notion Database ID (optional)</label>
+        <Input value={sourceId} onChange={(e) => setSourceId(e.target.value)} placeholder="e.g., 1a2b3c4d5e6f7g8h9i0j" />
+        <p className="text-xs text-muted-foreground mt-1">
+          Add your Notion Database ID to format CSV output to match your database columns.
+          <a href="https://developers.notion.com/docs/create-a-notion-integration#getting-started" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline ml-1">
+            Learn more
+          </a>
+        </p>
       </div>
       <div
         {...getRootProps()}

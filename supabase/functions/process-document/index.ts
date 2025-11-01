@@ -1,10 +1,34 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import {
+  validateUUID,
+  validateFileSize,
+  validateFileType,
+  validateSourceId,
+  checkRateLimit,
+} from '../_shared/validation.ts';
+import {
+  logAuditEvent,
+  AuditEventType,
+  AuditSeverity,
+  extractIpAddress,
+  extractUserAgent,
+} from '../_shared/audit.ts';
+import { encryptData, decryptData } from '../_shared/encryption.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': process.env.NODE_ENV === 'production' 
+    ? 'https://yourdomain.com' // Replace with your actual domain
+    : '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
 };
 
 serve(async (req) => {
@@ -13,7 +37,31 @@ serve(async (req) => {
   }
 
   let documentId: string | null = null;
+  const ipAddress = extractIpAddress(req.headers);
+  const userAgent = extractUserAgent(req.headers);
+  
   try {
+    // Rate limiting check
+    const rateLimit = checkRateLimit(ipAddress, 50, 60000); // 50 requests per minute
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: 'Rate limit exceeded. Please try again later.',
+          resetTime: rateLimit.resetTime,
+        }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Retry-After': String(Math.ceil((rateLimit.resetTime - Date.now()) / 1000)),
+            'X-RateLimit-Limit': '50',
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+          },
+        }
+      );
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -26,11 +74,24 @@ serve(async (req) => {
 
     const body = await req.json();
     documentId = body?.documentId ?? null;
-    console.log('Processing document:', documentId);
 
-    if (!documentId) {
-      throw new Error('Document ID is required');
+    // Validate document ID
+    const docIdValidation = validateUUID(documentId || '');
+    if (!docIdValidation.valid) {
+      await logAuditEvent(supabaseClient, {
+        eventType: AuditEventType.INVALID_INPUT,
+        severity: AuditSeverity.WARNING,
+        ipAddress,
+        userAgent,
+        action: 'process_document_invalid_id',
+        status: 'failure',
+        errorMessage: docIdValidation.error,
+      });
+      throw new Error(docIdValidation.error || 'Invalid document ID');
     }
+    documentId = docIdValidation.sanitized;
+    
+    console.log('Processing document:', documentId);
 
     // Get document details
     const { data: document, error: docError } = await supabaseClient
@@ -41,13 +102,230 @@ serve(async (req) => {
 
     if (docError) throw docError;
     
+    // Verify user ownership
+    const { data: { user } } = await supabaseClient.auth.getUser();
+    if (!user || document.user_id !== user.id) {
+      await logAuditEvent(supabaseClient, {
+        eventType: AuditEventType.UNAUTHORIZED_ACCESS,
+        severity: AuditSeverity.ERROR,
+        userId: user?.id,
+        ipAddress,
+        userAgent,
+        resourceId: documentId,
+        action: 'process_document_unauthorized',
+        status: 'failure',
+        errorMessage: 'User does not own this document',
+      });
+      throw new Error('Unauthorized');
+    }
+
+    // Validate file size and type
+    const fileSizeValidation = validateFileSize(document.file_size);
+    if (!fileSizeValidation.valid) {
+      throw new Error(fileSizeValidation.error);
+    }
+
+    const fileTypeValidation = validateFileType(document.file_type);
+    if (!fileTypeValidation.valid) {
+      throw new Error(fileTypeValidation.error);
+    }
+
+    // Log processing start
+    await logAuditEvent(supabaseClient, {
+      eventType: AuditEventType.DOCUMENT_PROCESS,
+      severity: AuditSeverity.INFO,
+      userId: user.id,
+      userEmail: user.email,
+      ipAddress,
+      userAgent,
+      resourceId: documentId,
+      action: 'process_document_start',
+      status: 'success',
+      metadata: {
+        filename: document.filename,
+        fileType: document.file_type,
+        fileSize: document.file_size,
+      },
+    });
+    
     // Get source_id from document record
     const sourceId = (document as any).source_id ?? null;
     console.log('Document source_id:', sourceId);
 
     // Optionally fetch Notion database schema when a sourceId is provided
-    const notionSchema = sourceId ? await fetchNotionDatabaseSchema(sourceId) : null;
-    const notionHeaders: string[] | null = notionSchema ? Object.keys(notionSchema.properties) : null;
+    let notionSchema: any | null = null;
+    let notionHeaders: string[] | null = null;
+    
+    if (sourceId) {
+      // Validate source_id format
+      if (!validateSourceId(sourceId)) {
+        await logAuditEvent(supabaseClient, {
+          userId: document.user_id,
+          eventType: AuditEventType.INVALID_INPUT,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          resourceId: documentId,
+          action: 'validate_source_id',
+          status: 'failure',
+          metadata: { sourceId, reason: 'Invalid source_id format' },
+        });
+        return new Response(
+          JSON.stringify({ error: 'Invalid source_id format' }),
+          { status: 400, headers: corsHeaders }
+        );
+      }
+
+      // First try to get user's personal Notion API key from user_settings
+      let notionApiKey = null;
+      const { data: userSettings, error: settingsError } = await supabaseClient
+        .from('user_settings')
+        .select('notion_api_key')
+        .eq('user_id', document.user_id)
+        .maybeSingle();
+      
+      if (settingsError) {
+        console.error('Error fetching user settings:', settingsError);
+        await logAuditEvent(supabaseClient, {
+          userId: document.user_id,
+          eventType: AuditEventType.DATA_ACCESS,
+          severity: AuditSeverity.MEDIUM,
+          ipAddress,
+          userAgent,
+          resourceId: documentId,
+          action: 'fetch_user_settings',
+          status: 'failure',
+          metadata: { error: settingsError.message },
+        });
+      }
+      
+      if (userSettings?.notion_api_key) {
+        try {
+          // Decrypt the stored API key
+          const encryptionSecret = Deno.env.get('ENCRYPTION_SECRET');
+          if (!encryptionSecret) {
+            console.error('ENCRYPTION_SECRET not configured');
+            await logAuditEvent(supabaseClient, {
+              userId: document.user_id,
+              eventType: AuditEventType.ENCRYPTION_FAILURE,
+              severity: AuditSeverity.CRITICAL,
+              ipAddress,
+              userAgent,
+              resourceId: documentId,
+              action: 'decrypt_api_key',
+              status: 'failure',
+              metadata: { reason: 'ENCRYPTION_SECRET not configured' },
+            });
+          } else {
+            notionApiKey = await decryptData(userSettings.notion_api_key, encryptionSecret);
+            console.log('Using user\'s personal Notion API key');
+            
+            await logAuditEvent(supabaseClient, {
+              userId: document.user_id,
+              eventType: AuditEventType.API_KEY_USAGE,
+              severity: AuditSeverity.INFO,
+              ipAddress,
+              userAgent,
+              resourceId: documentId,
+              action: 'use_personal_notion_key',
+              status: 'success',
+              metadata: { sourceId },
+            });
+          }
+        } catch (decryptError) {
+          console.error('Failed to decrypt Notion API key:', decryptError);
+          await logAuditEvent(supabaseClient, {
+            userId: document.user_id,
+            eventType: AuditEventType.ENCRYPTION_FAILURE,
+            severity: AuditSeverity.HIGH,
+            ipAddress,
+            userAgent,
+            resourceId: documentId,
+            action: 'decrypt_api_key',
+            status: 'failure',
+            metadata: { error: String(decryptError) },
+          });
+        }
+      }
+      
+      if (!notionApiKey) {
+        // Fallback to system-wide NOTION_API_KEY (if configured)
+        notionApiKey = Deno.env.get('NOTION_API_KEY');
+        if (notionApiKey) {
+          console.log('Using system-wide Notion API key');
+          await logAuditEvent(supabaseClient, {
+            userId: document.user_id,
+            eventType: AuditEventType.API_KEY_USAGE,
+            severity: AuditSeverity.INFO,
+            ipAddress,
+            userAgent,
+            resourceId: documentId,
+            action: 'use_system_notion_key',
+            status: 'success',
+            metadata: { sourceId },
+          });
+        }
+      }
+      
+      if (!notionApiKey) {
+        console.warn('No Notion API key found (user or system). CSV will be formatted generically.');
+      } else {
+        try {
+          notionSchema = await fetchNotionDatabaseSchema(sourceId, notionApiKey);
+          notionHeaders = notionSchema ? Object.keys(notionSchema.properties) : null;
+          
+          if (notionHeaders) {
+            await logAuditEvent(supabaseClient, {
+              userId: document.user_id,
+              eventType: AuditEventType.DATA_ACCESS,
+              severity: AuditSeverity.INFO,
+              ipAddress,
+              userAgent,
+              resourceId: documentId,
+              action: 'fetch_notion_schema',
+              status: 'success',
+              metadata: { 
+                sourceId,
+                columnCount: notionHeaders.length,
+              },
+            });
+            console.log(`Fetched Notion schema with ${notionHeaders.length} columns`);
+          } else {
+            await logAuditEvent(supabaseClient, {
+              userId: document.user_id,
+              eventType: AuditEventType.DATA_ACCESS,
+              severity: AuditSeverity.WARNING,
+              ipAddress,
+              userAgent,
+              resourceId: documentId,
+              action: 'fetch_notion_schema',
+              status: 'failure',
+              metadata: { 
+                sourceId,
+                reason: 'Schema fetch returned null',
+              },
+            });
+            console.warn('Failed to fetch Notion schema. CSV will be formatted generically.');
+          }
+        } catch (schemaError) {
+          await logAuditEvent(supabaseClient, {
+            userId: document.user_id,
+            eventType: AuditEventType.DATA_ACCESS,
+            severity: AuditSeverity.WARNING,
+            ipAddress,
+            userAgent,
+            resourceId: documentId,
+            action: 'fetch_notion_schema',
+            status: 'failure',
+            metadata: { 
+              sourceId,
+              error: String(schemaError),
+            },
+          });
+          console.warn('Failed to fetch Notion schema:', schemaError);
+        }
+      }
+    }
 
     // Update status to processing
     await supabaseClient
@@ -128,7 +406,17 @@ serve(async (req) => {
         `- Leave cells blank if data is unavailable\n` +
         `- Date format: YYYY-MM-DD\n` +
         `- Escape commas and quotes properly (RFC4180)`
-      : `\n\nFormat the CSV with clear, descriptive column headers. First row must be headers, then data rows.`;
+      : sourceId
+        ? `\n\nNOTION DATABASE INTEGRATION (ID: ${sourceId}):\n` +
+          `The user intends to import this CSV into a Notion database.\n` +
+          `- Analyze the document and identify ALL data fields present\n` +
+          `- Create descriptive column headers for each field\n` +
+          `- Format dates as YYYY-MM-DD\n` +
+          `- Format numbers consistently\n` +
+          `- Create a structured, well-organized CSV with clear headers\n` +
+          `- First row MUST be headers, subsequent rows are data\n` +
+          `- Escape commas and quotes properly (RFC4180)`
+        : `\n\nFormat the CSV with clear, descriptive column headers. First row must be headers, then data rows.`;
 
     const systemPrompt = `You are an expert document processing system specialized in extracting structured data for Notion databases.
 
@@ -140,7 +428,13 @@ YOUR TASK:
    - Markdown: Clean formatted version of the content
    - CSV: PERFECTLY formatted for Notion database import${headersInstruction}
 
-Be thorough and capture ALL information. The CSV format is CRITICAL for the user's workflow.`;
+Be thorough and capture ALL information. The CSV format is CRITICAL for the user's workflow.
+
+FORMAT REQUIREMENTS:
+- Wrap each format in code blocks: \`\`\`json, \`\`\`markdown, \`\`\`csv
+- For CSV: First row is headers, subsequent rows are data
+- Extract all structured data (tables, lists, key-value pairs)
+- Maintain data relationships and hierarchy where possible`;
 
     // Use Lovable AI to process the image/document
     const userContent: any[] = [
@@ -148,7 +442,9 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
         type: 'text',
         text: notionHeaders && notionHeaders.length
           ? `Extract and structure ALL data from this document for the given Notion database. Align JSON keys and CSV columns to these headers: ${notionHeaders.join(', ')}.`
-          : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.'
+          : sourceId
+            ? `Extract and structure ALL data from this document for import into Notion database ${sourceId}. Identify all fields, create appropriate column headers, and organize the data in a structured CSV format.`
+            : 'Extract all information from this document. Provide: 1) JSON with structured data 2) Markdown version 3) CSV format with clear headers.'
       }
     ];
 
@@ -270,6 +566,24 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
       .update({ status: 'completed' })
       .eq('id', documentId);
 
+    // Log successful processing completion
+    await logAuditEvent(supabaseClient, {
+      userId: document.user_id,
+      eventType: AuditEventType.DOCUMENT_PROCESSED,
+      severity: AuditSeverity.INFO,
+      ipAddress,
+      userAgent,
+      resourceId: documentId!,
+      action: 'process_document_complete',
+      status: 'success',
+      metadata: {
+        filename: document.filename,
+        fileType: document.file_type,
+        hadNotionSchema: !!notionHeaders,
+        columnCount: notionHeaders?.length,
+      },
+    });
+
     return new Response(
       JSON.stringify({ success: true, message: 'Document processed successfully' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -277,7 +591,7 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
   } catch (error: any) {
     console.error('Error in process-document function:', error);
     
-    // Try to update document status to error (avoid re-consuming body)
+    // Try to update document status to error and log audit event
     try {
       const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
@@ -298,6 +612,22 @@ Be thorough and capture ALL information. The CSV format is CRITICAL for the user
             error_message: error.message?.slice(0, 500)
           })
           .eq('id', errorDocId);
+        
+        // Log processing failure
+        await logAuditEvent(supabaseClient, {
+          userId: document?.user_id,
+          eventType: AuditEventType.DOCUMENT_PROCESS,
+          severity: AuditSeverity.ERROR,
+          ipAddress,
+          userAgent,
+          resourceId: errorDocId,
+          action: 'process_document_error',
+          status: 'failure',
+          metadata: {
+            error: error.message?.slice(0, 500),
+            errorType: error.name,
+          },
+        });
       }
     } catch (updateError) {
       console.error('Failed to update error status:', updateError);
@@ -365,9 +695,8 @@ function convertToCSV(text: string): string {
 }
 
 // Optional: Fetch Notion database schema when a Source ID is provided
-async function fetchNotionDatabaseSchema(databaseId: string): Promise<any | null> {
+async function fetchNotionDatabaseSchema(databaseId: string, token: string): Promise<any | null> {
   try {
-    const token = Deno.env.get('NOTION_API_KEY');
     if (!token) return null;
     const resp = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
       method: 'GET',

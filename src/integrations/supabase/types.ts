@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          id: string
+          created_at: string
+          event_type: string
+          severity: string
+          user_id: string | null
+          user_email: string | null
+          ip_address: string | null
+          user_agent: string | null
+          resource: string | null
+          resource_id: string | null
+          action: string
+          status: string
+          error_message: string | null
+          metadata: Json | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          event_type: string
+          severity: string
+          user_id?: string | null
+          user_email?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          resource?: string | null
+          resource_id?: string | null
+          action: string
+          status: string
+          error_message?: string | null
+          metadata?: Json | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          event_type?: string
+          severity?: string
+          user_id?: string | null
+          user_email?: string | null
+          ip_address?: string | null
+          user_agent?: string | null
+          resource?: string | null
+          resource_id?: string | null
+          action?: string
+          status?: string
+          error_message?: string | null
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
           created_at: string
@@ -90,6 +141,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          id: string
+          notion_api_key: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notion_api_key?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notion_api_key?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

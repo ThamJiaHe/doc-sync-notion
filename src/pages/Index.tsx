@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { FileUpload } from "@/components/FileUpload";
+import { UserProfileDropdown } from "@/components/UserProfileDropdown";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/AppSidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -267,68 +266,76 @@ const Index = () => {
   if (!user) return null;
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-muted/30">
-        <AppSidebar user={user} />
-
-        <main className="flex-1 overflow-y-auto">
-          {/* Header */}
-          <header className="sticky top-0 z-10 bg-background border-b border-border/50">
-            <div className="flex items-center gap-4 px-6 py-4">
-              <SidebarTrigger />
-              <h1 className="text-2xl font-bold">Document Management</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-lg border-b border-border shadow-sm">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center shadow-lg">
+              <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
             </div>
-          </header>
-
-          {/* Content */}
-          <div className="p-6 space-y-6">
-            {/* Search & Actions */}
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search documents..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              {selectedDocs.size > 0 && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={reprocessSelected}
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Reprocess ({selectedDocs.size})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={downloadAllCSV}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV ({selectedDocs.size})
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setDeleteDialogOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" />
-                    Delete ({selectedDocs.size})
-                  </Button>
-                </div>
-              )}
+            <div>
+              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                Doc Sync Notion
+              </h1>
+              <p className="text-xs text-muted-foreground">AI Document Processor</p>
             </div>
+          </div>
+          <UserProfileDropdown user={user} />
+        </div>
+      </header>
 
-            {/* Upload Zone */}
-            <FileUpload onUploadComplete={fetchDocuments} />
+      {/* Content */}
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Search & Actions */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search documents..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          {selectedDocs.size > 0 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={reprocessSelected}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                Reprocess ({selectedDocs.size})
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadAllCSV}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download CSV ({selectedDocs.size})
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete ({selectedDocs.size})
+              </Button>
+            </div>
+          )}
+        </div>
 
-            {/* Documents Table */}
-            <div className="border border-border rounded-lg bg-background">
-              <Table>
+        {/* Upload Zone */}
+        <FileUpload onUploadComplete={fetchDocuments} />
+
+        {/* Documents Table */}
+        <div className="border border-border rounded-lg bg-background shadow-sm">
+          <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="w-12">
@@ -432,18 +439,16 @@ const Index = () => {
                         </TableCell>
                       </TableRow>
                     ))}
-                </TableBody>
-              </Table>
+            </TableBody>
+          </Table>
 
-              {/* Pagination */}
-              <div className="flex items-center justify-between px-4 py-3 border-t border-border">
-                <p className="text-sm text-muted-foreground">
-                  Showing {documents.length} document{documents.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
+          {/* Pagination */}
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+            <p className="text-sm text-muted-foreground">
+              Showing {documents.length} document{documents.length !== 1 ? 's' : ''}
+            </p>
           </div>
-        </main>
+        </div>
       </div>
 
       {/* Preview Dialog */}
@@ -509,7 +514,7 @@ const Index = () => {
         document={editDoc}
         onUpdate={fetchDocuments}
       />
-    </SidebarProvider>
+    </div>
   );
 };
 

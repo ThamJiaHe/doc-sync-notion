@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   FileText,
+  Settings,
   LogOut,
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -51,7 +52,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                   <p className="text-sm font-medium truncate">
                     {user?.email?.split("@")[0] || "User"}
                   </p>
-                  <p className="text-xs text-muted-foreground">Sales Manager</p>
+                  <p className="text-xs text-muted-foreground">Free Plan</p>
                 </div>
               </div>
             </div>
@@ -73,6 +74,22 @@ export function AppSidebar({ user }: AppSidebarProps) {
               >
                 <LayoutDashboard className="h-4 w-4" />
                 {!collapsed && <span>Documents</span>}
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <NavLink
+                to="/settings"
+                className={({ isActive }) =>
+                  isActive
+                    ? "bg-primary text-primary-foreground font-medium"
+                    : "hover:bg-muted"
+                }
+              >
+                <Settings className="h-4 w-4" />
+                {!collapsed && <span>Settings</span>}
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
