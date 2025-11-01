@@ -406,23 +406,71 @@ If you see "Invalid Refresh Token" errors:
 
 ### Notion Integration Issues
 
+**API Keys and Source ID not persisting (FIXED ✅):**
+- Added `default_source_id` column to `user_settings` table
+- Settings dialog now saves both Notion API Key and Default Database ID
+- FileUpload component auto-loads the default Source ID on mount
+- Settings persist across browser sessions and page refreshes
+
+**Documents stuck in "Pending" status:**
+1. **Root cause**: Edge functions need to be deployed to Supabase
+2. **Solution**: Deploy the `process-document` edge function (see below)
+3. See [DEPLOYMENT_INSTRUCTIONS.md](./DEPLOYMENT_INSTRUCTIONS.md) for detailed steps
+
 **CSV not matching Notion database format:**
 1. Add your Notion API key in **Settings > Notion Integration**
-2. Verify the Notion Database ID is correct (32-character UUID)
-3. Ensure the integration has access to the database (click "Add connections" in Notion)
-4. Reprocess the document after configuring the API key
+2. Add your Default Notion Database ID in Settings (optional - auto-fills on upload)
+3. Verify the Notion Database ID is correct (32-character UUID)
+4. Ensure the integration has access to the database (click "Add connections" in Notion)
+5. Reprocess the document after configuring the API key
 
 **Where to add Notion API key:**
-- Navigate to **Settings** page (click Settings in sidebar)
+- Navigate to **Settings** page (click your profile picture in top right)
 - Scroll to "Notion Integration" section
-- Paste your API key and click Save
-- The key is stored securely in your user settings
+- Paste your API key and optionally set a default Database ID
+- Click Save
+- The key is stored securely (encrypted) in your user settings
 
 **CSV exports are generic without column matching:**
 - This is normal behavior without a Notion API key
 - The AI still extracts all data intelligently and creates descriptive headers
 - To enable automatic column matching, add your Notion API key in Settings
 - You can manually map columns when importing to Notion
+
+## 🚀 Deploying Edge Functions
+
+**IMPORTANT:** For document processing to work, you must deploy the edge functions to Supabase.
+
+### Quick Deploy via Supabase CLI:
+
+```bash
+# Install Supabase CLI
+npm install -g supabase
+
+# Login and link to project
+supabase login
+supabase link --project-ref hthwsxnyqrcbvqxnydmi
+
+# Deploy functions
+supabase functions deploy
+
+# Set required secrets
+supabase secrets set LOVABLE_API_KEY=your_lovable_api_key
+supabase secrets set ENCRYPTION_SECRET=$(openssl rand -base64 32)
+```
+
+### Alternative: Deploy via Supabase Dashboard:
+
+1. Go to https://hthwsxnyqrcbvqxnydmi.supabase.co
+2. Navigate to **Edge Functions** > **Deploy new function**
+3. Upload files from `supabase/functions/process-document/`
+4. Set environment variables in **Edge Functions** > **Settings**
+
+**Required Environment Variables:**
+- `LOVABLE_API_KEY` - For AI OCR processing (ask your Lovable project admin)
+- `ENCRYPTION_SECRET` - Generate with: `openssl rand -base64 32`
+
+See [DEPLOYMENT_INSTRUCTIONS.md](./DEPLOYMENT_INSTRUCTIONS.md) for complete deployment guide.
 
 ## 📚 Documentation
 

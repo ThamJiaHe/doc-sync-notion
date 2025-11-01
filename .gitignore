@@ -34,3 +34,4 @@ COMPLETE_SETUP.sql
 *.njsproj
 *.sln
 *.sw?
+supabase/migrations/20251101160000_add_default_source_id.sql

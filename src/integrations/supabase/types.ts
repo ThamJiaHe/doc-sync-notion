@@ -147,6 +147,7 @@ export type Database = {
           created_at: string
           id: string
           notion_api_key: string | null
+          default_source_id: string | null
           updated_at: string
           user_id: string
         }
@@ -154,6 +155,7 @@ export type Database = {
           created_at?: string
           id?: string
           notion_api_key?: string | null
+          default_source_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -161,6 +163,7 @@ export type Database = {
           created_at?: string
           id?: string
           notion_api_key?: string | null
+          default_source_id?: string | null
           updated_at?: string
           user_id?: string
         }

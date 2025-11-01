@@ -64,7 +64,7 @@ serve(async (req) => {
     if (req.method === 'GET') {
       const { data: userSettings, error: fetchError } = await supabaseClient
         .from('user_settings')
-        .select('notion_api_key')
+        .select('notion_api_key, default_source_id')
         .eq('user_id', user.id)
         .maybeSingle()
 
@@ -114,6 +114,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           notion_api_key: decryptedApiKey || '',
+          default_source_id: userSettings?.default_source_id || '',
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -121,7 +122,7 @@ serve(async (req) => {
 
     // Handle POST request - Encrypt and save settings
     // Parse request body
-    const { notion_api_key } = await req.json()
+    const { notion_api_key, default_source_id } = await req.json()
 
     // Validate Notion API key format if provided
     if (notion_api_key && !validateNotionApiKey(notion_api_key)) {
@@ -193,6 +194,7 @@ serve(async (req) => {
       .upsert({
         user_id: user.id,
         notion_api_key: encryptedApiKey,
+        default_source_id: default_source_id || null,
       }, {
         onConflict: 'user_id'
       })
@@ -227,6 +229,7 @@ serve(async (req) => {
       status: 'success',
       metadata: { 
         hasNotionKey: !!notion_api_key,
+        hasDefaultSourceId: !!default_source_id,
       },
     });
 

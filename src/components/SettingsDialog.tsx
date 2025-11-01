@@ -33,6 +33,7 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps) {
   const [notionApiKey, setNotionApiKey] = useState("");
+  const [defaultSourceId, setDefaultSourceId] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,7 +84,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
       // Fallback: Read directly from database (unencrypted or legacy data)
       const { data, error } = await supabase
         .from("user_settings")
-        .select("notion_api_key")
+        .select("notion_api_key, default_source_id")
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -104,6 +105,9 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
         } else {
           setNotionApiKey(apiKey);
         }
+        
+        // Load default source ID
+        setDefaultSourceId(data.default_source_id || "");
       }
     } catch (error: any) {
       console.error("Error fetching settings:", error);
@@ -117,10 +121,17 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
     if (!user) return;
 
     const trimmedKey = notionApiKey.trim();
+    const trimmedSourceId = defaultSourceId.trim();
     
     // Validate Notion API key format (accepts both OAuth and Internal Integration tokens)
     if (trimmedKey && !trimmedKey.startsWith("secret_") && !trimmedKey.startsWith("ntn_")) {
       toast.error("Invalid Notion API key format. It should start with 'secret_' or 'ntn_'");
+      return;
+    }
+
+    // Validate Source ID format if provided (UUID with or without dashes)
+    if (trimmedSourceId && !/^[a-f0-9-]{32,36}$/i.test(trimmedSourceId)) {
+      toast.error("Invalid Notion Database ID format. It should be a 32-character UUID.");
       return;
     }
 
@@ -145,6 +156,7 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
           },
           body: JSON.stringify({
             notion_api_key: trimmedKey || null,
+            default_source_id: trimmedSourceId || null,
           }),
         }
       );
@@ -280,6 +292,22 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                         <li>Copy the <strong>Internal Integration Secret</strong> (starts with <code className="bg-muted px-1 py-0.5 rounded text-xs">ntn_</code> or <code className="bg-muted px-1 py-0.5 rounded text-xs">secret_</code>)</li>
                         <li>Paste it above and click Save</li>
                       </ol>
+                    </div>
+
+                    {/* Default Notion Database ID */}
+                    <div className="space-y-3 pt-4">
+                      <Label htmlFor="default-source-id" className="text-sm font-medium">Default Notion Database ID (optional)</Label>
+                      <Input
+                        id="default-source-id"
+                        type="text"
+                        value={defaultSourceId}
+                        onChange={(e) => setDefaultSourceId(e.target.value)}
+                        placeholder="e.g., 1a2b3c4d5e6f7g8h9i0j"
+                        className="font-mono text-sm h-11"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        Set a default Notion Database ID to auto-fill when uploading documents. You can find this in your Notion database URL.
+                      </p>
                     </div>
                   </div>
                 </>

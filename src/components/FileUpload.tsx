@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Upload, File, X } from "lucide-react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,34 @@ export const FileUpload = ({ onUploadComplete }: FileUploadProps) => {
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [sourceId, setSourceId] = useState("");
+  const [loadingSettings, setLoadingSettings] = useState(true);
+
+  // Load default source ID from user settings on mount
+  useEffect(() => {
+    const loadDefaultSourceId = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Try to fetch from user_settings
+        const { data, error } = await supabase
+          .from("user_settings")
+          .select("default_source_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (!error && data?.default_source_id) {
+          setSourceId(data.default_source_id);
+        }
+      } catch (error) {
+        console.error("Error loading default source ID:", error);
+      } finally {
+        setLoadingSettings(false);
+      }
+    };
+
+    loadDefaultSourceId();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     setFiles((prev) => [...prev, ...acceptedFiles]);
