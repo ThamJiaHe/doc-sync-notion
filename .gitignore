@@ -35,3 +35,4 @@ COMPLETE_SETUP.sql
 *.sln
 *.sw?
 supabase/migrations/20251101160000_add_default_source_id.sql
+check-document-schema.sql

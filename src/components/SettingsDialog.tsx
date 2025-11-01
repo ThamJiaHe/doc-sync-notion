@@ -179,61 +179,60 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="text-2xl font-bold">Settings</DialogTitle>
-          <DialogDescription className="text-base">
+      <DialogContent className="max-w-2xl max-h-[80vh] p-0 overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
+          <DialogTitle className="text-xl font-bold">Settings</DialogTitle>
+          <DialogDescription className="text-sm">
             Manage your account settings and integrations
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-140px)]">
-          <div className="px-6 pb-6 space-y-8">
-            {/* Profile Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <User className="h-5 w-5 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">Profile</h3>
+        <ScrollArea className="flex-1 overflow-auto">
+          <div className="px-6 pb-4 space-y-6">{/* Profile Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-base font-semibold">Profile</h3>
               </div>
               <Separator />
-              <div className="flex items-center gap-6">
-                <Avatar className="h-20 w-20">
+              <div className="flex items-center gap-4">
+                <Avatar className="h-16 w-16">
                   <AvatarImage src="" />
-                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-2xl font-semibold">
+                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-white text-lg font-semibold">
                     {user?.email?.substring(0, 2).toUpperCase() || "U"}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-1">
                   <div>
-                    <Label className="text-sm text-muted-foreground">Email</Label>
-                    <p className="text-base font-medium">{user?.email}</p>
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    <p className="text-sm font-medium">{user?.email}</p>
                   </div>
                   <div>
-                    <Label className="text-sm text-muted-foreground">User ID</Label>
-                    <p className="text-sm font-mono text-muted-foreground break-all">{user?.id}</p>
+                    <Label className="text-xs text-muted-foreground">User ID</Label>
+                    <p className="text-xs font-mono text-muted-foreground break-all">{user?.id}</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Notion Integration Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Key className="h-5 w-5 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">Notion Integration</h3>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Key className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-base font-semibold">Notion Integration</h3>
               </div>
               <Separator />
 
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <div className="flex items-center justify-center py-6">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                 </div>
               ) : (
                 <>
                   {/* Information Alert */}
                   <Alert className="border-blue-200 bg-blue-50">
                     <Info className="h-4 w-4 text-blue-600" />
-                    <AlertDescription className="text-sm text-blue-900 leading-relaxed">
+                    <AlertDescription className="text-xs text-blue-900 leading-relaxed">
                       <strong>Why add a Notion API key?</strong>
                       <br />
                       With your personal Notion API key, our AI can fetch your database schema and format CSV exports with exact column headers matching your Notion database.
@@ -241,8 +240,8 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                   </Alert>
 
                   {/* API Key Input */}
-                  <div className="space-y-4">
-                    <div className="space-y-3">
+                  <div className="space-y-3">
+                    <div className="space-y-2">
                       <Label htmlFor="notion-api-key" className="text-sm font-medium">Notion API Key</Label>
                       <div className="relative">
                         <Input
@@ -250,29 +249,29 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                           type={showApiKey ? "text" : "password"}
                           value={notionApiKey}
                           onChange={(e) => setNotionApiKey(e.target.value)}
-                          placeholder="ntn_xxxxxxxxxxxxxxxxxxxxxxxx or secret_xxxxxxxxxxxxxxxxxxxxxxxx"
-                          className="pr-10 font-mono text-sm h-11"
+                          placeholder="ntn_xxx... or secret_xxx..."
+                          className="pr-10 font-mono text-xs h-9"
                         />
                         <button
                           type="button"
                           onClick={() => setShowApiKey(!showApiKey)}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                         >
-                          {showApiKey ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Your API key is stored securely. Leave empty to disable Notion integration.
                       </p>
                     </div>
 
-                    {/* Setup Instructions */}
-                    <div className="bg-muted/50 rounded-lg p-5 space-y-3">
-                      <h4 className="font-semibold text-base flex items-center gap-2">
-                        <Info className="h-5 w-5" />
+                    {/* Setup Instructions - Collapsible */}
+                    <details className="bg-muted/50 rounded-lg">
+                      <summary className="p-3 cursor-pointer font-medium text-sm flex items-center gap-2 hover:bg-muted/70">
+                        <Info className="h-4 w-4" />
                         How to get your Notion API key
-                      </h4>
-                      <ol className="text-sm space-y-2.5 ml-6 list-decimal leading-relaxed">
+                      </summary>
+                      <ol className="text-xs space-y-1.5 px-8 pb-3 list-decimal leading-relaxed">
                         <li>
                           Go to{" "}
                           <a
@@ -292,10 +291,10 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                         <li>Copy the <strong>Internal Integration Secret</strong> (starts with <code className="bg-muted px-1 py-0.5 rounded text-xs">ntn_</code> or <code className="bg-muted px-1 py-0.5 rounded text-xs">secret_</code>)</li>
                         <li>Paste it above and click Save</li>
                       </ol>
-                    </div>
+                    </details>
 
                     {/* Default Notion Database ID */}
-                    <div className="space-y-3 pt-4">
+                    <div className="space-y-2 pt-2">
                       <Label htmlFor="default-source-id" className="text-sm font-medium">Default Notion Database ID (optional)</Label>
                       <Input
                         id="default-source-id"
@@ -303,9 +302,9 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
                         value={defaultSourceId}
                         onChange={(e) => setDefaultSourceId(e.target.value)}
                         placeholder="e.g., 1a2b3c4d5e6f7g8h9i0j"
-                        className="font-mono text-sm h-11"
+                        className="font-mono text-xs h-9"
                       />
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         Set a default Notion Database ID to auto-fill when uploading documents. You can find this in your Notion database URL.
                       </p>
                     </div>
@@ -316,11 +315,11 @@ export function SettingsDialog({ open, onOpenChange, user }: SettingsDialogProps
           </div>
         </ScrollArea>
 
-        <div className="px-6 py-5 border-t bg-muted/20 flex justify-end gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="h-10 px-6 text-sm">
+        <div className="px-6 py-3 border-t bg-muted/20 flex justify-end gap-2 shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="h-9 px-4 text-sm">
             Cancel
           </Button>
-          <Button onClick={saveSettings} disabled={saving || loading} className="gap-2 h-10 px-6 text-sm">
+          <Button onClick={saveSettings} disabled={saving || loading} className="gap-2 h-9 px-4 text-sm">
             <Save className="h-4 w-4" />
             {saving ? "Saving..." : "Save Settings"}
           </Button>

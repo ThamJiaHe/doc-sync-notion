@@ -105,15 +105,83 @@ const Index = () => {
   const processDocument = async (documentId: string) => {
     try {
       toast.info("Processing document...");
-      const { error } = await supabase.functions.invoke("process-document", {
+      
+      // Call edge function and capture full response
+      const response = await supabase.functions.invoke("process-document", {
         body: { documentId },
       });
 
-      if (error) throw error;
+      console.log('=== EDGE FUNCTION RESPONSE ===');
+      console.log('Data:', response.data);
+      console.log('Error:', response.error);
+      
+      // Try to get error details from the response
+      if (response.error) {
+        console.error('Error details:', response.error);
+        
+        // Try to read the error body from the Response object
+        if (response.error.context && response.error.context instanceof Response) {
+          try {
+            const errorBody = await response.error.context.text();
+            console.error('Error body from response:', errorBody);
+            
+            // Try to parse as JSON
+            try {
+              const errorJson = JSON.parse(errorBody);
+              console.error('Parsed error JSON:', errorJson);
+              throw new Error(errorJson.error || errorJson.message || errorBody);
+            } catch (parseErr) {
+              // Not JSON, use text as-is
+              throw new Error(errorBody);
+            }
+          } catch (readErr) {
+            console.error('Failed to read error body:', readErr);
+            throw response.error;
+          }
+        }
+        
+        throw response.error;
+      }
+      
       toast.success("Document processing started");
+      
+      // Poll for status updates every 2 seconds
+      const pollInterval = setInterval(async () => {
+        const { data: doc } = await supabase
+          .from('documents')
+          .select('status')
+          .eq('id', documentId)
+          .single();
+        
+        if (doc) {
+          if (doc.status === 'completed') {
+            clearInterval(pollInterval);
+            toast.success("Document processed successfully!");
+            fetchDocuments();
+          } else if (doc.status === 'error') {
+            clearInterval(pollInterval);
+            toast.error("Document processing failed");
+            fetchDocuments();
+          }
+          // If still processing, keep polling
+        }
+      }, 2000);
+      
+      // Stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+      }, 300000);
+      
+      // Initial refresh
       fetchDocuments();
     } catch (error: any) {
-      toast.error("Failed to process document: " + error.message);
+      console.error('=== CATCH BLOCK ===');
+      console.error('Error object:', error);
+      
+      const errorMessage = error?.message || 'Unknown error occurred';
+      
+      console.error('Final error message:', errorMessage);
+      toast.error("Failed to process document: " + errorMessage);
     }
   };
 

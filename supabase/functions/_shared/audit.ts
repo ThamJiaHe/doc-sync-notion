@@ -14,6 +14,7 @@ export enum AuditEventType {
   // Document events
   DOCUMENT_UPLOAD = 'document.upload',
   DOCUMENT_PROCESS = 'document.process',
+  DOCUMENT_PROCESSED = 'document.processed',
   DOCUMENT_DOWNLOAD = 'document.download',
   DOCUMENT_DELETE = 'document.delete',
   DOCUMENT_VIEW = 'document.view',
@@ -23,6 +24,13 @@ export enum AuditEventType {
   API_KEY_ADDED = 'api_key.added',
   API_KEY_UPDATED = 'api_key.updated',
   API_KEY_REMOVED = 'api_key.removed',
+  API_KEY_USAGE = 'api_key.usage',
+  
+  // Data access events
+  DATA_ACCESS = 'data.access',
+  
+  // Encryption events
+  ENCRYPTION_FAILURE = 'encryption.failure',
   
   // Security events
   RATE_LIMIT_EXCEEDED = 'security.rate_limit_exceeded',
@@ -36,6 +44,8 @@ export enum AuditSeverity {
   WARNING = 'warning',
   ERROR = 'error',
   CRITICAL = 'critical',
+  MEDIUM = 'medium',
+  HIGH = 'high',
 }
 
 interface AuditLogEntry {
@@ -119,11 +129,19 @@ export async function logAuditEvent(
 /**
  * Extracts IP address from request headers
  */
-export function extractIpAddress(headers: Headers): string {
+export function extractIpAddress(headers: Headers | Record<string, string>): string {
+  // Handle both Headers object and plain object
+  const get = (key: string) => {
+    if (headers instanceof Headers || (headers && typeof headers.get === 'function')) {
+      return (headers as Headers).get(key);
+    }
+    return (headers as Record<string, string>)[key];
+  };
+  
   return (
-    headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    headers.get('x-real-ip') ||
-    headers.get('cf-connecting-ip') || // Cloudflare
+    get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    get('x-real-ip') ||
+    get('cf-connecting-ip') || // Cloudflare
     'unknown'
   );
 }
@@ -131,8 +149,16 @@ export function extractIpAddress(headers: Headers): string {
 /**
  * Extracts user agent from request headers
  */
-export function extractUserAgent(headers: Headers): string {
-  return headers.get('user-agent') || 'unknown';
+export function extractUserAgent(headers: Headers | Record<string, string>): string {
+  // Handle both Headers object and plain object
+  const get = (key: string) => {
+    if (headers instanceof Headers || (headers && typeof headers.get === 'function')) {
+      return (headers as Headers).get(key);
+    }
+    return (headers as Record<string, string>)[key];
+  };
+  
+  return get('user-agent') || 'unknown';
 }
 
 /**
